@@ -82,7 +82,8 @@ class AgentAttention2D(nn.Module):
 
         B, C, H, W = x.shape
         # Flatten spatial dimensions -> [B, N, C]
-        X = x.view(B, C, H * W).permute(0, 2, 1)
+        # Using flatten keeps shape safety even if the input is non-contiguous
+        X = x.flatten(2).permute(0, 2, 1)  # [B, N, C]
         X_norm = self.norm_x(X)
 
         # Agent tokens replicated for each batch -> [B, M, C]

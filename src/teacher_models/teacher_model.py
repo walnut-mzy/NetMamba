@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -44,7 +44,15 @@ class StackingTeacherModel(nn.Module):
         x: torch.Tensor,
         return_probs: bool = False,
         return_intermediate: bool = False,
-    ) -> Tuple[torch.Tensor, Optional[Dict[str, torch.Tensor]]]:
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, Dict[str, torch.Tensor]]]:
+        """Forward through three frozen teachers and the fusion head.
+
+        Returns logits (or probabilities if ``return_probs``) to stay compatible
+        with downstream validation loops that expect ``model(x) -> logits``. If
+        ``return_intermediate`` is True, an additional dictionary with
+        concatenated teacher probabilities and fusion logits is returned.
+        """
+
         logits_list = [t(x) for t in self.teachers]
         probs_list = [softmax_probs(l) for l in logits_list]
         fused_logits = self.fusion(*probs_list)
@@ -56,7 +64,7 @@ class StackingTeacherModel(nn.Module):
                 "fusion_logits": fused_logits,
             }
             return output, intermediates
-        return output, None
+        return output
 
     def predict(self, loader, device: torch.device) -> torch.Tensor:
         self.to(device)
@@ -64,7 +72,8 @@ class StackingTeacherModel(nn.Module):
         with inference_mode(self):
             for x, _ in loader:
                 x = x.to(device)
-                logits, _ = self.forward(x)
+                out = self.forward(x)
+                logits = out[0] if isinstance(out, tuple) else out
                 preds.append(logits.cpu())
         return torch.cat(preds, dim=0)
 
